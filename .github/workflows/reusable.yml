@@ -1,0 +1,22 @@
+name: Synthetic reusable boundary
+on:
+  workflow_call:
+    inputs:
+      runner_label:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  final:
+    runs-on: ${{ inputs.runner_label }}
+    steps:
+      - name: Assert reusable called after matrix
+        run: |
+          printf 'reusable-result-v1\n' > final.txt
+      - name: Save reusable result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reusable-output
+          path: final.txt
+          retention-days: 1
