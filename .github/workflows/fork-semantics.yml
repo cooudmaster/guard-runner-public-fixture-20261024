@@ -1,0 +1,26 @@
+name: Public fork event identity (hosted only)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions: {}
+jobs:
+  identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read provider event without checking out fork code
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          event=json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          pr=event['pull_request']
+          assert os.environ['GITHUB_EVENT_NAME']=='pull_request'
+          print(json.dumps({'schema':'public-fork-event/v1',
+                            'repository':os.environ['GITHUB_REPOSITORY'],
+                            'headRepository':pr['head']['repo']['full_name'],
+                            'headSha':pr['head']['sha'], 'baseSha':pr['base']['sha'],
+                            'workflowSha':os.environ['GITHUB_SHA'],
+                            'fork':pr['head']['repo']['full_name']!=os.environ['GITHUB_REPOSITORY'],
+                            'localRunnerRequested':False}))
+          PY

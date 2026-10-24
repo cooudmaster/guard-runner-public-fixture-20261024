@@ -1,0 +1,58 @@
+name: Public disposable runner enrollment
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: Exact unique label from the operator
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: public-fixture-enrollment
+  cancel-in-progress: false
+jobs:
+  isolated:
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 5
+    steps:
+      - name: Public repository and network boundary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, socket, urllib.request
+          proxy = 'http://10.0.2.100:3128'
+          assert os.environ.get('https_proxy') == proxy
+          assert os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+          repository = os.environ['GITHUB_REPOSITORY']
+          request = urllib.request.Request('https://api.github.com/repos/' + repository,
+                                          headers={'User-Agent': 'disposable-runner-fixture'})
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({'https': proxy}))
+          with opener.open(request, timeout=20) as response:
+              metadata = json.load(response)
+          assert metadata['full_name'] == repository and metadata['private'] is False
+          for host, port in [('169.254.169.254', 80), ('10.0.2.2', 22), ('fd00::1', 443)]:
+              try:
+                  connection = socket.create_connection((host, port), timeout=2)
+              except OSError:
+                  continue
+              connection.close()
+              raise AssertionError('Direct private target unexpectedly accessible')
+          for target in ['localhost:443', '10.0.2.2:443', '169.254.169.254:443', '[fd00::1]:443']:
+              with socket.create_connection(('10.0.2.100', 3128), timeout=5) as connection:
+                  connection.sendall(('CONNECT ' + target + ' HTTP/1.1\r\nHost: ' + target + '\r\n\r\n').encode())
+                  assert connection.recv(4096).startswith(b'HTTP/1.1 403')
+          receipt = {'schema':'public-runner-fixture/v1', 'repository':repository,
+                     'visibility':'public', 'event':os.environ['GITHUB_EVENT_NAME'],
+                     'sha':os.environ['GITHUB_SHA'], 'runId':os.environ['GITHUB_RUN_ID'],
+                     'attempt':os.environ['GITHUB_RUN_ATTEMPT'], 'directPrivate':'blocked',
+                     'proxyPrivate':'blocked', 'publicHttps':'passed'}
+          pathlib.Path('public-enrollment.json').write_text(json.dumps(receipt, indent=2)+'\n')
+          print(json.dumps(receipt))
+          PY
+      - name: Persist public receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-enrollment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: public-enrollment.json
+          if-no-files-found: error
+          retention-days: 1
