@@ -1,0 +1,10 @@
+const { chromium } = require('playwright-core');
+const fs=require('node:fs'); const assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+try {const page=await browser.newPage({viewport:{width:800,height:600}});
+await page.setContent('<html><body><h1>Fixture</h1><button onclick="document.querySelector(\'output\').textContent=\'Validated\'">Validate</button><output>Pending</output></body></html>');
+await page.getByRole('button',{name:'Validate'}).click();
+const value=await page.locator('output').textContent();assert.equal(value,'Validated');
+await page.screenshot({path:'browser.png'});
+fs.writeFileSync('browser.json',JSON.stringify({schema:'synthetic-real-browser/v1',title:await page.locator('h1').textContent(),value,viewport:page.viewportSize(),browserVersion:browser.version()})+'\n');
+}finally {await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
